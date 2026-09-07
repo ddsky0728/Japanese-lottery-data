@@ -5,13 +5,56 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ロト番号生成 — 抽せんデータ配信</title>
 <style>
-  body { font-family: system-ui, -apple-system, sans-serif; max-width: 680px;
-         margin: 40px auto; padding: 0 20px; line-height: 1.8; color: #1a1d23; }
-  h1 { font-size: 22px; }
-  code { background: #f2f4f7; padding: 2px 6px; border-radius: 4px; font-size: 14px; }
-  ul { padding-left: 20px; }
-  .note { color: #5a6270; font-size: 14px; }
-</style>
+  /* ── 配色はトークンで一元管理する ──
+     ライトを :root に全て定義し、ダークは「トークンだけ」を上書きする。
+     ダークのブロックは基本規則より後ろに置く（同じ詳細度では後の宣言が勝つため、
+     前に置くと明るい背景に明るい文字が重なって読めなくなる）。 */
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff;
+    --text: #1a1d23;
+    --muted: #565e6b;
+    --border: #e3e7ed;
+    --surface: #f5f7fa;
+    --link: #1f56b8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171c;
+      --text: #e8ebf1;
+      --muted: #aab3c1;
+      --border: #2f3742;
+      --surface: #1e2229;
+      --link: #8ab4ff;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif;
+    max-width: 720px; margin: 0 auto; padding: 40px 20px 80px; line-height: 1.9;
+    color: var(--text); background: var(--bg);
+    -webkit-text-size-adjust: 100%;
+  }
+  h1 { font-size: 24px; margin: 0 0 6px; color: var(--text); }
+  h2 { font-size: 17px; margin: 34px 0 10px; padding-bottom: 6px;
+       border-bottom: 1px solid var(--border); color: var(--text); }
+  h3 { font-size: 15px; margin: 20px 0 4px; color: var(--text); }
+  p, li { font-size: 15px; color: var(--text); }
+  ul { padding-left: 22px; }
+  .meta { color: var(--muted); font-size: 14px; margin: 0 0 8px; }
+  .note { color: var(--muted); font-size: 13px; }
+  .box { background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+         padding: 16px 18px; margin: 14px 0; color: var(--text); }
+  .box p, .box li { color: var(--text); }
+  .table-wrap { overflow-x: auto; margin: 10px 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { border: 1px solid var(--border); padding: 8px 12px; text-align: left;
+           color: var(--text); }
+  th { background: var(--surface); width: 34%; font-weight: 600; }
+  a { color: var(--link); }
+  a:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+  </style>
 </head>
 <body>
   <h1>ロト番号生成 — 抽せんデータ配信</h1>
