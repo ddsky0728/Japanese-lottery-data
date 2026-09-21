@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  抽せんデータのローカル自動更新。
+
+  取得先が GitHub Actions のIPを遮断するため、収集はこの Mac で行う。
+  抽せん日（月・火・木・金）の 21:30 と 23:00 に実行する。
+  掲載が遅れた日も 23:00 の回で拾えるようにしてある。
+  Mac が眠っていた場合は、起きた直後に実行される。
+
+  置き場所について:
+    macOS は ~/Downloads・~/Desktop・~/Documents を保護しており、
+    launchd から起動したプロセスはそこを読み書きできない。
+    そのためこのリポジトリは ~/loto に置いてある。移動させないこと。
+
+  登録:
+    cp ~/loto/Japanese-lottery-data/scripts/com.ddsky0728.loto-update.plist ~/Library/LaunchAgents/
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.ddsky0728.loto-update.plist
+  解除:
+    launchctl bootout gui/$(id -u)/com.ddsky0728.loto-update
+  即実行:
+    launchctl kickstart -p gui/$(id -u)/com.ddsky0728.loto-update
+  ログ:
+    ~/Library/Logs/loto-update.log
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.ddsky0728.loto-update</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/jeong/loto/Japanese-lottery-data/scripts/local_update.sh</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>21</integer><key>Minute</key><integer>30</integer></dict>
+        <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>23</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>21</integer><key>Minute</key><integer>30</integer></dict>
+        <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>23</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>21</integer><key>Minute</key><integer>30</integer></dict>
+        <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>23</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>21</integer><key>Minute</key><integer>30</integer></dict>
+        <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>23</integer><key>Minute</key><integer>0</integer></dict>
+    </array>
+
+    <key>StandardOutPath</key>
+    <string>/Users/jeong/Library/Logs/loto-update.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/jeong/Library/Logs/loto-update.log</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>

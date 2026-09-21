@@ -22,7 +22,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from fetch_draw import RULES, FetchError, NotPublished, fetch  # noqa: E402
+from fetch_draw import (RULES, FetchError, NotPublished,  # noqa: E402
+                        TransientError, fetch)
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -93,12 +94,23 @@ def write_everywhere(lottery: str, data: list) -> list:
     return written
 
 
+def notice(text: str) -> None:
+    """一時的な事情は失敗にしないが、見えなくもしない。
+
+    GitHub Actions では警告注記として出す（黄色。ジョブは失敗しない）。
+    """
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        print(f"::warning::{text}")
+    else:
+        print(f"注意: {text}")
+
+
 def main() -> int:
     dry_run = "--dry-run" in sys.argv
     today = now_jst()
     print(f"実行時刻: {today:%Y-%m-%d %H:%M} JST" + ("  [確認のみ]" if dry_run else ""))
 
-    added_total, failures = 0, []
+    added_total, failures, transient = 0, [], []
 
     for lottery in ("miniloto", "loto6", "loto7"):
         data = load(lottery)
@@ -114,6 +126,12 @@ def main() -> int:
             except NotPublished as e:
                 print(f"  {lottery:9} 第{rnd}回({date_text}) 未公開のため見送り: {e}")
                 break                      # これ以降の回も出ていないはず
+            except TransientError as e:
+                # 相手側・通信側の事情。中身の問題ではないので失敗扱いにしない。
+                msg = f"{lottery} 第{rnd}回({date_text}) 今回は取得できず: {e}"
+                print(f"  … {msg}")
+                transient.append(msg)
+                break                      # これ以降の回も同じ結果になる
             except FetchError as e:
                 msg = f"{lottery} 第{rnd}回({date_text}) 取得失敗: {e}"
                 print(f"  ✗ {msg}")
@@ -135,6 +153,8 @@ def main() -> int:
         added_total += added_here
 
     print()
+    for msg in transient:
+        notice(f"{msg} — 次回の実行で拾います")
     if failures:
         print("解釈できなかった回があります。手動で確認してください:")
         for f in failures:

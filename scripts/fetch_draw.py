@@ -14,8 +14,10 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -37,6 +39,17 @@ JP_NAME = {"loto6": "ロト6", "loto7": "ロト7", "miniloto": "ミニロト"}
 UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
       "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36")
 
+# 取得先の robots.txt が Crawl-delay: 40 を求めているので、その間隔を空ける。
+# 未反映の回がまとまっているときに連続で叩かないための措置。
+CRAWL_DELAY = float(os.environ.get("LOTO_CRAWL_DELAY", "40"))
+
+# 一時的な不調（5xx・通信断）だけ少し待って試し直す。
+# 403/429 は相手の意思表示なので試し直さない。
+RETRY_LIMIT = 2
+RETRY_WAIT = 20
+
+_last_request_at = 0.0
+
 
 class NotPublished(Exception):
     """まだ結果が出ていない（抽せん前・記事未公開）。次回に回せばよい。"""
@@ -46,17 +59,48 @@ class FetchError(Exception):
     """取得または解釈に失敗した。人が確認するまで取り込まない。"""
 
 
+class TransientError(FetchError):
+    """相手側・通信側の事情で今は取得できない（遮断・混雑・通信断）。
+
+    データの中身の問題ではないので、これ自体は異常終了の理由にしない。
+    次回の実行で拾えばよい。データセンターのIPが遮断される場合が典型で、
+    同じコードでも家庭用回線からは通る。
+    """
+
+
+def _wait_for_crawl_delay() -> None:
+    """前回の要求から CRAWL_DELAY 秒が経つまで待つ。初回は待たない。"""
+    global _last_request_at
+    if _last_request_at:
+        remaining = CRAWL_DELAY - (time.monotonic() - _last_request_at)
+        if remaining > 0:
+            time.sleep(remaining)
+    _last_request_at = time.monotonic()
+
+
 def _download(url: str) -> str | None:
-    req = urllib.request.Request(url, headers={"User-Agent": UA})
-    try:
-        with urllib.request.urlopen(req, timeout=30) as res:
-            return res.read().decode("utf-8", errors="ignore")
-    except urllib.error.HTTPError as e:
-        if e.code == 404:
-            return None
-        raise FetchError(f"HTTP {e.code}")
-    except Exception as e:
-        raise FetchError(str(e))
+    for attempt in range(RETRY_LIMIT + 1):
+        _wait_for_crawl_delay()
+        req = urllib.request.Request(url, headers={"User-Agent": UA})
+        try:
+            with urllib.request.urlopen(req, timeout=30) as res:
+                return res.read().decode("utf-8", errors="ignore")
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                return None                       # 記事がまだない
+            if e.code in (403, 429):
+                # 遮断・流量制限。試し直しても同じで、相手の負担を増やすだけ。
+                raise TransientError(f"HTTP {e.code}")
+            if 500 <= e.code < 600 and attempt < RETRY_LIMIT:
+                time.sleep(RETRY_WAIT)
+                continue
+            raise TransientError(f"HTTP {e.code}")
+        except Exception as e:
+            if attempt < RETRY_LIMIT:
+                time.sleep(RETRY_WAIT)
+                continue
+            raise TransientError(str(e))
+    raise TransientError("試し直しても取得できませんでした")
 
 
 def _plain(html_text: str) -> str:
@@ -190,5 +234,7 @@ if __name__ == "__main__":
                          ensure_ascii=False, indent=2))
     except NotPublished as e:
         sys.exit(f"未公開: {e}")
+    except TransientError as e:
+        sys.exit(f"一時的に取得できません: {e}")
     except FetchError as e:
         sys.exit(f"取得失敗: {e}")
