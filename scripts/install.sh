@@ -103,7 +103,7 @@ plutil -lint -s "$PLIST_DST" || { echo "  plist が壊れています"; exit 1; 
 
 launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null
 if launchctl bootstrap "gui/$(id -u)" "$PLIST_DST"; then
-  echo "  登録しました — 抽せん日（月・火・木・金）21:30 / 23:00、毎朝 08:00"
+  echo "  登録しました — 抽せん日（月・火・木・金）21:00 / 22:00、毎朝 08:00"
 else
   echo "  登録に失敗しました"
   exit 1

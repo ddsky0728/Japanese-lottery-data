@@ -39,8 +39,27 @@ export GIT_TERMINAL_PROMPT=0
 GITNET=(-c http.lowSpeedLimit=1000 -c http.lowSpeedTime=60)
 
 # 0) GitHub 側の最新に合わせる。Actions 側で先に取り込まれていれば重複しない。
-"$GIT" "${GITNET[@]}" pull -q --ff-only 2>/dev/null \
-  || log "注意: GitHub 側と履歴が分かれています。push で失敗する場合は手動で確認してください。"
+#
+#    Actions のワークフローもこの Mac と同じ 21:00 / 22:00 に動く。
+#    まれに Actions 側も取得に成功すると、同じ回を両側で commit して履歴が分かれ、
+#    以後この Mac からの push が毎回拒否される。
+#    手元だけにある commit が loto/ の取り込み分だけなら、取得元から作り直せるので
+#    捨てて GitHub 側に合わせ、このあと取り込み直す。それ以外の変更が混じっていれば
+#    人の判断が要るので触らない。
+"$GIT" "${GITNET[@]}" fetch -q origin 2>/dev/null
+if ! "$GIT" merge -q --ff-only '@{u}' 2>/dev/null; then
+  if [ "$("$GIT" rev-list --count 'HEAD..@{u}')" != "0" ] \
+     && [ -z "$("$GIT" diff --name-only '@{u}...HEAD' -- . ':!loto')" ]; then
+    # --keep: 手元の未 commit の変更があれば消さずに中止する
+    if "$GIT" reset -q --keep '@{u}'; then
+      log "GitHub 側と履歴が分かれていたため、手元の取り込み分を捨てて GitHub 側に合わせました（このあと取り込み直します）"
+    else
+      log "注意: GitHub 側に合わせられませんでした（未 commit の変更があります）。手動で確認してください。"
+    fi
+  else
+    log "注意: GitHub 側と履歴が分かれています（loto/ 以外の変更を含むため自動では合わせません）。手動で確認してください。"
+  fi
+fi
 
 # 1) 取り込み。遮断や通信断なら 0 で返るので、ここでは止まらない。
 log "取り込みを実行"
