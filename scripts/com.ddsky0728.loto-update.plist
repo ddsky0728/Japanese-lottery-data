@@ -7,16 +7,19 @@
   取得先が GitHub Actions のIPを遮断するため、収集はこの Mac で行う。
   抽せん日（月・火・木・金）の 21:30 と 23:00 に実行する。
   掲載が遅れた日も 23:00 の回で拾えるようにしてある。
+  加えて毎朝 08:00 にも実行する。前夜に取りこぼした回や、
+  push に失敗して残った commit をここで拾う（金曜の取りこぼしが月曜まで残らない）。
   Mac が眠っていた場合は、起きた直後に実行される。
+
+  登録は scripts/install.sh が行う（パスはこの Mac に合わせて書き換えられる）。
 
   置き場所について:
     macOS は ~/Downloads・~/Desktop・~/Documents を保護しており、
     launchd から起動したプロセスはそこを読み書きできない。
     そのためこのリポジトリは ~/loto に置いてある。移動させないこと。
 
-  登録:
-    cp ~/loto/Japanese-lottery-data/scripts/com.ddsky0728.loto-update.plist ~/Library/LaunchAgents/
-    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.ddsky0728.loto-update.plist
+  登録（入れ替えも同じ）:
+    bash ~/loto/Japanese-lottery-data/scripts/install.sh
   解除:
     launchctl bootout gui/$(id -u)/com.ddsky0728.loto-update
   即実行:
@@ -45,6 +48,7 @@
         <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>23</integer><key>Minute</key><integer>0</integer></dict>
         <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>21</integer><key>Minute</key><integer>30</integer></dict>
         <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>23</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Hour</key><integer>8</integer><key>Minute</key><integer>0</integer></dict>
     </array>
 
     <key>StandardOutPath</key>

@@ -83,9 +83,13 @@ if OUT="$("$GIT" "${GITNET[@]}" push 2>&1)"; then
 fi
 
 echo "$OUT"
-if echo "$OUT" | grep -qiE "Invalid username or token|Authentication failed|could not read Username"; then
-  log "push に失敗: GitHub の認証が通りません（トークンの期限切れ・無効化の可能性）。"
-  log "  → ターミナルで一度 git push し、新しいトークンを入力してください。"
+if echo "$OUT" | grep -qiE "Invalid username or token|Authentication failed|could not read Username|Permission denied \(publickey\)|Could not read from remote repository"; then
+  log "push に失敗: GitHub の認証が通りません。"
+  if "$GIT" remote get-url origin | grep -q '^git@'; then
+    log "  → 配備鍵（~/.ssh/loto_deploy）が GitHub の Deploy keys から外れていないか確認してください。"
+  else
+    log "  → トークンの期限切れ・無効化の可能性。ターミナルで一度 git push し、新しいトークンを入力してください。"
+  fi
   log "  → 認証が直れば、次回の実行で未公開分はまとめて送られます。"
 else
   log "push に失敗。次回の実行で送り直します。"
