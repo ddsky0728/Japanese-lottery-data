@@ -14,8 +14,17 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PAGES="https://ddsky0728.github.io/Japanese-lottery-data/loto"
 LOG="$HOME/Library/Logs/loto-update.log"
 LABEL="com.ddsky0728.loto-update"
+LAUNCH_PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 PY=/usr/bin/python3
 LOTTERIES=(loto6 loto7 miniloto)
+
+# リポジトリの plist を、この Mac のパスに合わせて書き出す。
+# install.sh の登録と、status の「登録内容が最新か」の判定が同じものを使う。
+render_plist() {
+  sed -e "s#/Users/jeong/loto/Japanese-lottery-data#$REPO#g" \
+      -e "s#/Users/jeong/Library/Logs#$HOME/Library/Logs#g" \
+      "$REPO/scripts/$LABEL.plist"
+}
 
 # 標準入力の JSON から「最新の回 抽せん日」を返す
 latest() {
@@ -64,6 +73,12 @@ cmd_status() {
   local line
   if line="$(launchctl list | grep "$LABEL")"; then
     echo "  登録済み — 前回の終了コード: $(echo "$line" | awk '{print $2}')（0 なら正常）"
+    # launchd が読むのは登録時に写した plist だけ。リポジトリ側を変えても
+    # install.sh を実行し直すまで効かないので、食い違いを知らせる
+    if ! render_plist | cmp -s - "$LAUNCH_PLIST"; then
+      echo "  ⚠ 登録されている設定がリポジトリより古いままです（変更が効いていません）"
+      echo "    → bash $REPO/scripts/install.sh を実行してください"
+    fi
   else
     echo "  未登録 — bash $REPO/scripts/install.sh を実行してください"
   fi
@@ -99,5 +114,6 @@ cmd_update() {
 case "${1:-}" in
   update) cmd_update ;;
   status) cmd_status ;;
+  plist)  render_plist ;;    # install.sh が使う
   *) echo "使い方: loto-update | loto-status"; exit 2 ;;
 esac

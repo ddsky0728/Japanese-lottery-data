@@ -18,7 +18,6 @@ set -uo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LABEL="com.ddsky0728.loto-update"
-PLIST_SRC="$REPO/scripts/$LABEL.plist"
 PLIST_DST="$HOME/Library/LaunchAgents/$LABEL.plist"
 KEY="$HOME/.ssh/loto_deploy"
 KNOWN="$HOME/.ssh/loto_known_hosts"
@@ -96,14 +95,14 @@ step "2/3 定期実行（launchd）"
 
 mkdir -p "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
 # plist の中の絶対パスを、この Mac のリポジトリとホームに合わせて書き換える
-sed -e "s#/Users/jeong/loto/Japanese-lottery-data#$REPO#g" \
-    -e "s#/Users/jeong/Library/Logs#$HOME/Library/Logs#g" \
-    "$PLIST_SRC" > "$PLIST_DST"
+# （loto-status が「登録内容が最新か」を判定するのと同じ処理を使う）
+bash "$REPO/scripts/loto.sh" plist > "$PLIST_DST"
 plutil -lint -s "$PLIST_DST" || { echo "  plist が壊れています"; exit 1; }
 
 launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null
 if launchctl bootstrap "gui/$(id -u)" "$PLIST_DST"; then
-  echo "  登録しました — 抽せん日（月・火・木・金）21:00 / 22:00、毎朝 08:00"
+  echo "  登録しました — 抽せん日（月・火・木・金）21:00 / 22:00、毎朝 08:00、ログイン直後"
+  echo "  （登録と同時に 1 回実行されます。結果は loto-status か ~/Library/Logs/loto-update.log で）"
 else
   echo "  登録に失敗しました"
   exit 1
