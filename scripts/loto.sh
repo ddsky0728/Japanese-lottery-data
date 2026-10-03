@@ -84,6 +84,58 @@ cmd_status() {
   fi
 
   echo
+  echo "■ 蓋を閉じた自動更新"
+  # 電源アダプタ接続時の Power Nap が切れていると、蓋を閉じている間は目を覚まさない
+  local pn
+  pn="$(/usr/bin/pmset -g custom 2>/dev/null | awk '/^AC Power/{ac=1;next} /^[A-Za-z]/{ac=0} ac&&$1=="powernap"{print $2}')"
+  case "$pn" in
+    1) echo "  Power Nap（電源アダプタ接続時）: 有効" ;;
+    0) echo "  ⚠ Power Nap（電源アダプタ接続時）: 無効 — 蓋を閉じている間は更新されません"
+       echo "    → システム設定 → バッテリー → オプション で Power Nap を有効にしてください" ;;
+    *) echo "  Power Nap: 確認できませんでした" ;;
+  esac
+  if /usr/bin/pmset -g batt 2>/dev/null | head -1 | grep -q "AC Power"; then
+    echo "  いまの電源: 電源アダプタ"
+  else
+    echo "  いまの電源: バッテリー（蓋を閉じるなら電源アダプタにつないでおくのが確実です）"
+  fi
+  echo "  蓋を閉じた状態での直近の実行:"
+  if [ -f "$LOG" ] && grep -q "蓋=閉" "$LOG"; then
+    # 「環境: … 蓋=閉」の回を、成功も失敗も途中で止まった回も含めて拾う。
+    #   - 次の「=== 開始」か最後に来たら、終了の行が無くてもその回を出す（途中で止まった回）
+    #   - 「要確認」は別に持ち、あとの「公開」「更新なし」で消えないようにする
+    #   - 結果は短い名前にする（awk の substr はバイト単位で、日本語を途中で切ってしまう）
+    awk '
+      function flush(t) {
+        if (env == "") return
+        if (res == "") res = "失敗・中断（終了の記録なし）"
+        printf "    %s %s〜%s  %s → %s%s%s\n", day, start, t, env, res, (warn ? "（要確認）" : ""), (sa ? "（スリープ防止に失敗）" : "")
+        env = ""
+      }
+      /=== 開始/ { flush(last); start=substr($2,1,8); day=substr($1,2); env=""; res=""; warn=0; sa=0 }
+      /^\[20/ { last=substr($2,1,8) }
+      /^stay_awake:/ { sa=1 }
+      /環境:/ && /蓋=閉/ { env=$0; sub(/.*環境: /,"",env) }
+      env!="" && /公開しました/ { res="公開" }
+      env!="" && /更新なし/ { res="更新なし" }
+      env!="" && /push に失敗/ { res="push 失敗" }
+      env!="" && /検証に失敗/ { res="検証失敗" }
+      env!="" && /中止します|鍵を作れません|鍵を消せません/ { res="中止" }
+      env!="" && /解釈できない|公開せずに元へ戻しました/ { warn=1 }
+      /=== 終了/ {
+        if (env != "" && match($0, /exit [0-9]+/) && substr($0, RSTART+5, RLENGTH-5) + 0 != 0) {
+          if (res == "") res = "失敗"
+          else if (res == "公開" || res == "更新なし") warn = 1
+        }
+        flush(substr($2,1,8))
+      }
+      END { flush(last) }
+' "$LOG" | tail -n 3
+  else
+    echo "    まだありません（電源につないで蓋を閉じたまま抽せん日の夜を過ぎると、ここに表示されます）"
+  fi
+
+  echo
   echo "■ 直近のログ"
   if [ -f "$LOG" ]; then tail -n 8 "$LOG" | sed 's/^/  /'; else echo "  （ログなし）"; fi
 }

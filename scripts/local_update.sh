@@ -16,6 +16,9 @@
 #   - 抽せん日の 21:00 / 22:00、毎朝 08:00
 #   - ログインした直後（RunAtLoad）。電源を切っていた間の予定は launchd が
 #     実行し直さないため、起動時にここで取りこぼしを拾う
+#   - 蓋を閉じてスリープしていても、電源アダプタにつないでいれば動く。
+#     Power Nap で約 16 分ごとに数十秒だけ目を覚まし（DarkWake）、そのとき
+#     launchd が予定を実行する。実行中はスリープを止めておく（下の caffeinate）
 #
 # 動作:
 #   0. ほかの更新処理と重ならないよう待ち、ネットワークに繋がるのを待つ
@@ -37,7 +40,45 @@ GIT=/usr/bin/git
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
 
 log "=== 開始 (${REPO}) ==="
+
+# どこで終わっても「=== 終了 (exit N) ===」を残し、自分の鍵だけを外す。
+# 以前は成功したときにしか終了の行が無く、失敗した回が loto-status に出なかった。
+# 鍵の後始末もここにまとめる（trap は後から設定すると前のものを置き換えるため）。
+LOCKDIR=""
+on_exit() {
+  local rc=$?
+  [ -n "$LOCKDIR" ] && [ "$(cat "$LOCKDIR/pid" 2>/dev/null)" = "$$" ] && rm -rf "$LOCKDIR"
+  log "=== 終了 (exit $rc) ==="
+}
+trap on_exit EXIT
+
 cd "$REPO" || exit 1
+
+# ---- 実行中はスリープさせない ------------------------------------------------
+# 蓋を閉じたまま Power Nap で目を覚ましたとき（DarkWake）、Mac は 40 秒ほどで
+# 再びスリープする（このMacの記録で 38〜39 秒）。ふだんの取り込みは 6〜8 秒で
+# 終わるが、未反映の回が重なる（取得元への要求は 40 秒おき）・通信が遅いなどで
+# 長引くと途中で止まり、次に目を覚ます 16 分後まで待たされ、その間に通信が切れて
+# 失敗しうる。実行中だけスリープを止め、終われば自動で解除する。
+#
+# 主: stay_awake.py の NetworkClientActive。DarkWake 中も効くと IOPMLib.h に明記された種類
+# 予備: caffeinate。-i は DarkWake では効かず -s は廃止扱いだが、蓋を開けている間の
+#       アイドルスリープは確実に止めるので重ねておく（どちらも電源アダプタ接続時が前提）
+/usr/bin/python3 "$REPO/scripts/stay_awake.py" $$ &
+/usr/bin/caffeinate -i -s -w $$ &
+
+# どんな状態で動いたかを残す。蓋を閉じた運用が実際に働いているかを、
+# あとから loto-status やこのログで確かめるため
+if /usr/bin/pmset -g batt 2>/dev/null | head -1 | grep -q "AC Power"; then POWER=電源アダプタ; else POWER=バッテリー; fi
+case "$(/usr/sbin/ioreg -r -k AppleClamshellState -d 1 2>/dev/null | awk -F'= ' '/AppleClamshellState/{print $2; exit}')" in
+  Yes) LID=閉 ;; No) LID=開 ;; *) LID=不明 ;;
+esac
+case "$(/usr/bin/pmset -g systemstate 2>/dev/null | head -1)" in
+  *Graphics*) WAKE=通常 ;;      # 画面まで起きている
+  *CPU*)      WAKE=DarkWake ;;  # 画面は消えたまま、裏で目を覚ましている
+  *)          WAKE=不明 ;;
+esac
+log "環境: 電源=${POWER} 蓋=${LID} 状態=${WAKE}"
 
 # ---- 同時実行の防止 ---------------------------------------------------------
 # ログイン直後の自動実行と、同じ頃に手で叩いた loto-update が重なると、
@@ -51,7 +92,7 @@ cd "$REPO" || exit 1
 # 一方、持ち主が生きていれば経過時間では奪わない。MacBook はスリープ中に
 # プロセスごと止まるので、目覚めた持ち主と二重に動いてしまうため。
 # 持ち主の各処理にはすべて時間制限があり、永久に居座ることはない。
-LOCKDIR="$REPO/.git/loto-update.lock"
+LOCKDIR="$REPO/.git/loto-update.lock"   # on_exit が後始末に使う
 LOCK_WAIT_MAX="${LOTO_LOCK_WAIT_MAX:-600}"   # 先の処理を待つ上限（秒）
 
 # 鍵の持ち主がもういなければ真
@@ -110,9 +151,8 @@ acquire_lock() {
     waited=$((waited + 5))
   done
   echo $$ > "$LOCKDIR/pid"
-  # 自分の鍵のときだけ消す。回収されたあとに目覚めた古い持ち主が、
-  # 新しい持ち主の鍵を消してしまわないように
-  trap '[ "$(cat "$LOCKDIR/pid" 2>/dev/null)" = "$$" ] && rm -rf "$LOCKDIR"' EXIT
+  # 終わるときの後始末は on_exit（自分の鍵のときだけ消す。回収されたあとに
+  # 目覚めた古い持ち主が、新しい持ち主の鍵を消してしまわないように）
 }
 acquire_lock || exit 1
 
@@ -256,14 +296,12 @@ AHEAD="$("$GIT" rev-list --count '@{u}..HEAD' 2>/dev/null)" || {
 }
 if [ "$AHEAD" = "0" ]; then
   log "更新なし"
-  log "=== 終了 ==="
   exit "$STRUCTURAL"
 fi
 
 log "未公開の commit が ${AHEAD} 件あります。push します"
 if OUT="$("$GIT" "${GITNET[@]}" push 2>&1)"; then
   log "公開しました: $("$PYTHON" scripts/verify.py --summary)"
-  log "=== 終了 ==="
   exit "$STRUCTURAL"
 fi
 
